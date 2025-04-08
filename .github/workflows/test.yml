@@ -1,0 +1,127 @@
+---
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow}}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-22.04
+          - windows-latest
+          # - macos-latest
+        python-version:
+          - 2.7
+          - 3.4
+          - 3.5
+          - 3.6
+          - 3.7
+          - 3.8
+          - 3.9
+          - 3.10
+          - 3.11
+          - 3.12
+          # - 3.13
+          # - 3.13t  # free threading
+          - pypy2
+          - pypy3
+        ffmpg:
+          - latest
+        include:
+          - os: windows-latest
+            python-version: 2.7
+            ffmpg: 4.2.3
+          - os: windows-latest
+            python-version: 3.4
+            ffmpg: 4.2.3
+          - os: windows-latest
+            python-version: 3.5
+            ffmpg: 4.2.3
+          - os: windows-latest
+            python-version: 3.6
+            ffmpg: 4.2.3
+          - os: windows-latest
+            python-version: 3.6
+            ffmpg: latest
+          - os: windows-latest
+            python-version: 3.7
+          - os: windows-latest
+            python-version: 3.8
+          - os: windows-latest
+            python-version: 3.9
+          - os: windows-latest
+            python-version: 3.10
+          - os: windows-latest
+            python-version: 3.11
+          - os: windows-latest
+            python-version: 3.12
+          # - os: windows-latest
+          #   python-version: 3.13
+          # - os: windows-latest
+          #   python-version: 3.13t
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          apt-get update --fix-missing
+          apt-get install -y ffmpeg libopus-dev python-scipy python3-scipy
+
+      - name: Install Windows dependencies
+        if: runner.os == 'Windows'
+        env:
+          FFMPEG: ${{ matrix.ffmpeg }}
+        run: |
+          # Install ffmpeg
+          Start-FileDownload ('https://github.com/advancedfx/ffmpeg.zeranoe.com-builds-mirror/releases/download/20200915/ffmpeg-' + $env:FFMPEG + '-win64-shared.zip') ffmpeg-shared.zip
+          7z x ffmpeg-shared.zip > NULL
+          SET PATH=%cd%\\ffmpeg-%FFMPEG%-win64-shared\\bin;%PATH%
+          # check ffmpeg installation (also shows version)
+          ffmpeg.exe -version
+        shell: powershell
+
+      - name: Install project
+        run: |
+          python -m pip install -U pip setuptools wheel
+          python -m pip install -e .
+          python -V
+
+      - name: Run tests
+        run: python test/test.py
+
+      - name: Run linter
+        run: |
+          python -m pip install pylama
+          python -m pylama -i W,E501 pydub/ || true
+    
